@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DirectConnect | by itsmarwan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS for global P2P WebRTC -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            background-color: #000000;
+        }
+    </style>
+</head>
+<body class="text-white min-h-screen flex flex-col justify-between font-sans">
+
+    <!-- Header -->
+    <header class="border-b border-zinc-800 bg-black sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-green-600 p-2 rounded text-black">
+                    <i class="fa-solid fa-circle-nodes text-lg"></i>
+                </div>
+                <div>
+                    <span class="font-bold text-xl tracking-tight text-white block leading-none">
+                        DirectConnect
+                    </span>
+                    <span class="text-[10px] text-green-500 font-mono tracking-widest uppercase">
+                        by itsmarwan
+                    </span>
+                </div>
+            </div>
+            <div class="text-xs text-zinc-400 bg-zinc-900 px-3 py-1.5 rounded border border-zinc-800 font-mono">
+                <i class="fa-solid fa-globe text-green-500 mr-1.5 animate-pulse"></i> GLOBAL P2P
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-zinc-950 border border-zinc-800 rounded p-6 shadow-2xl space-y-6">
+            
+            <!-- STATE 0: Welcome / Landing -->
+            <div id="state-landing" class="hidden text-center space-y-4 py-6">
+                <div class="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto text-green-500 border border-zinc-800">
+                    <i class="fa-solid fa-circle-info text-2xl"></i>
+                </div>
+                <h2 class="text-xl font-bold tracking-tight uppercase">Ready to Connect</h2>
+                <p class="text-sm text-zinc-400 leading-relaxed">
+                    DirectConnect transfers files directly between devices over WebRTC without hosting anything in the cloud. Launch the desktop executable to configure a node.
+                </p>
+                <div class="pt-4 border-t border-zinc-800 font-mono">
+                    <span class="text-xs text-zinc-500">Run <code class="bg-zinc-900 px-2 py-1 rounded text-green-400">DirectConnect.exe</code> locally</span>
+                </div>
+            </div>
+
+            <!-- STATE 1: Sender Setup & Handshake -->
+            <div id="state-sender" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="w-14 h-14 bg-green-950/20 text-green-500 rounded-full flex items-center justify-center mx-auto border border-green-800/30">
+                        <i class="fa-solid fa-wifi text-xl animate-pulse"></i>
+                    </div>
+                    <h2 class="text-lg font-bold uppercase tracking-tight">Broadcasting Direct Tunnel</h2>
+                    <p class="text-xs text-zinc-400">Unlock node credentials to register your peer identifier...</p>
+                </div>
+
+                <div id="sender-prompt" class="space-y-4">
+                    <div>
+                        <label for="sender-password" class="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">Session Password</label>
+                        <input type="password" id="sender-password" placeholder="••••••••" 
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded py-3 px-4 text-white placeholder-zinc-700 focus:outline-none focus:border-green-500 transition-colors font-mono">
+                    </div>
+                    <button id="sender-decrypt-btn" class="w-full bg-green-600 hover:bg-green-500 text-black font-bold uppercase tracking-wide py-3 rounded transition-all">
+                        Initialize P2P WebRTC Broker
+                    </button>
+                    <p id="sender-decrypt-error" class="hidden text-red-500 text-xs text-center font-mono">Incorrect encryption password.</p>
+                </div>
+
+                <div id="sender-active" class="hidden space-y-4">
+                    <div class="bg-zinc-900 border border-zinc-800 rounded p-4 space-y-2 font-mono">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-500">Local File:</span>
+                            <span id="sender-file-name" class="font-semibold text-white truncate max-w-[200px]">Checking...</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-zinc-400">Size:</span>
+                            <span id="sender-file-size" class="font-semibold text-green-500">0.00 MB</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block text-xs font-mono text-zinc-400 uppercase tracking-wider">Direct Share URL</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="share-url-input" readonly 
+                                class="flex-grow bg-zinc-900 border border-zinc-800 rounded py-2.5 px-3 text-xs font-mono text-green-400 focus:outline-none select-all">
+                            <button id="copy-url-btn" class="bg-zinc-800 hover:bg-zinc-700 px-4 rounded text-white transition-colors" title="Copy URL">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-zinc-800 pt-4 text-center">
+                        <div class="flex items-center justify-center gap-2 text-xs text-zinc-400">
+                            <span id="sender-status-icon" class="h-2.5 w-2.5 bg-yellow-500 rounded-full animate-ping"></span>
+                            <span id="sender-status-text" class="font-mono text-[11px]">Waiting for receiver node to connect...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATE 2: Receiver Password Request -->
+            <div id="state-decrypt" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="w-14 h-14 bg-zinc-900 border border-zinc-800 text-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <i class="fa-solid fa-lock text-xl"></i>
+                    </div>
+                    <h2 class="text-lg font-bold uppercase tracking-tight">DirectConnect Pipeline</h2>
+                    <p class="text-xs text-zinc-400">Unlock this connection link using the custom session password.</p>
+                </div>
+
+                <form id="decrypt-form" class="space-y-4">
+                    <div>
+                        <label for="password" class="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">Session Password</label>
+                        <div class="relative">
+                            <input type="password" id="password" required placeholder="••••••••" 
+                                class="w-full bg-zinc-900 border border-zinc-800 rounded py-3 px-4 pl-10 text-white placeholder-zinc-700 focus:outline-none focus:border-green-500 transition-colors font-mono">
+                            <i class="fa-solid fa-key absolute left-3.5 top-3.5 text-zinc-600"></i>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-500 text-black font-bold uppercase tracking-wide py-3 rounded transition-all flex items-center justify-center gap-2">
+                        Unlock Pipeline <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <div id="decrypt-error" class="hidden text-red-500 text-xs text-center font-bold bg-red-500/10 p-3 rounded border border-red-500/20 font-mono">
+                        <i class="fa-solid fa-circle-exclamation mr-1.5"></i> Password incorrect or link corrupted.
+                    </div>
+                </form>
+            </div>
+
+            <!-- STATE 3: Ready to Download -->
+            <div id="state-download" class="hidden space-y-6">
+                <div class="bg-zinc-900 border border-zinc-800 rounded p-4 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-green-500/10 text-green-500 rounded flex items-center justify-center shrink-0 border border-green-900/30">
+                        <i id="file-icon" class="fa-solid fa-file-arrow-down text-xl"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h3 id="file-name" class="font-bold text-white truncate text-sm">filename.zip</h3>
+                        <p id="file-size" class="text-xs text-zinc-400 mt-0.5">0.00 MB</p>
+                    </div>
+                </div>
+
+                <div class="space-y-2 text-xs font-mono text-zinc-400 bg-zinc-900/50 p-3 rounded border border-zinc-800/80">
+                    <div class="flex justify-between">
+                        <span>P2P Connection Mode:</span>
+                        <span class="text-green-500 font-bold">DECRYPTED TUNNEL</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Signaling Status:</span>
+                        <span id="conn-status" class="text-white">Negotiating channel...</span>
+                    </div>
+                </div>
+
+                <button id="download-btn" disabled class="w-full bg-green-600 hover:bg-green-500 text-black font-bold uppercase tracking-wider py-3.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-circle-nodes animate-spin mr-1"></i> Securing Tunnel...
+                </button>
+            </div>
+
+            <!-- STATE 4: Progress / Fetching -->
+            <div id="state-progress" class="hidden space-y-6 text-center py-4">
+                <div class="relative w-20 h-20 mx-auto">
+                    <div class="absolute inset-0 border-4 border-zinc-800 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center text-green-500">
+                        <i class="fa-solid fa-circle-nodes text-xl animate-bounce"></i>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="font-bold uppercase tracking-tight text-white">Streaming Bitstream</h3>
+                    <p class="text-xs text-zinc-400">Receiving file payload directly P2P...</p>
+                </div>
+                <div class="w-full bg-zinc-900 rounded h-2 overflow-hidden border border-zinc-800">
+                    <div id="progress-bar" class="bg-green-500 h-full w-0 transition-all duration-300"></div>
+                </div>
+                <p id="progress-text" class="text-xs font-mono text-zinc-400">0%</p>
+            </div>
+
+            <!-- STATE 5: Error Message -->
+            <div id="state-error" class="hidden text-center space-y-4 py-4">
+                <div class="w-16 h-16 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full flex items-center justify-center mx-auto">
+                    <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
+                </div>
+                <h2 id="error-title" class="text-lg font-bold uppercase tracking-tight text-red-500">Connection Interrupted</h2>
+                <p id="error-desc" class="text-sm text-zinc-400 leading-relaxed">
+                    Could not bind a session connection to the host. Ensure the sender has not closed their script or browser window.
+                </p>
+                <button onclick="window.location.reload()" class="bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-800 text-xs font-bold uppercase px-4 py-2 rounded transition-all">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Retry
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-zinc-900 py-6 text-center text-xs text-zinc-600 bg-black font-mono">
+        <p>DirectConnect &bull; Zero Server Retainability &bull; 100% Client-Side P2P</p>
+        <p class="mt-1 text-[10px] text-zinc-700">crafted under itsmarwan</p>
+    </footer>
+
+    <!-- Logic Script -->
+    <script src="/script.js"></script>
+</body>
+</html>
