@@ -57,8 +57,6 @@ if IS_WINDOWS:
         _SetWindowLong = user32.SetWindowLongW
 
     # Define accurate signatures for messaging and drops.
-    # CRITICAL: CallWindowProcW restype is set to LRESULT_TYPE (c_ssize_t/c_long) instead of c_void_p 
-    # to guarantee it returns an actual integer (even when 0/NULL) and never Python's "None".
     user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM]
     user32.CallWindowProcW.restype = LRESULT_TYPE
 
@@ -78,40 +76,40 @@ if IS_WINDOWS:
         def __init__(self, root, callback):
             self.root = root
             self.callback = callback
-            self.root.update_idletasks() # Let tk update to populate winfo_id
+            self.root.update_idletasks()
+            self.hwnd = self.root.winfo_id()
             
-            # Fetch HWND of the Tkinter root frame
-            try:
-                self.hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-                if not self.hwnd:
-                    self.hwnd = self.root.winfo_id()
-            except Exception:
-                self.hwnd = self.root.winfo_id()
-                
-            # Intercept system messaging
+            # Subclass the window
             self.old_wndproc = _GetWindowLong(self.hwnd, GWL_WNDPROC)
             self.new_wndproc = WNDPROC(self.wnd_proc)
-            
             _SetWindowLong(self.hwnd, GWL_WNDPROC, ctypes.cast(self.new_wndproc, ctypes.c_void_p))
             
-            # Instruct shell to accept drag files on this window HWND
             shell32.DragAcceptFiles(self.hwnd, True)
 
         def wnd_proc(self, hwnd, msg, wp, lp):
             if msg == WM_DROPFILES:
+                # IMPORTANT: We gather the data but do NOT call any tkinter methods here.
+                # We just extract the raw string pointers.
                 num_files = shell32.DragQueryFileW(wp, 0xFFFFFFFF, None, 0)
+                file_list = []
                 for i in range(num_files):
                     length = shell32.DragQueryFileW(wp, i, None, 0)
                     buf = ctypes.create_unicode_buffer(length + 1)
                     shell32.DragQueryFileW(wp, i, buf, length + 1)
-                    # Run on the main loop thread safely
-                    self.root.after(0, self.callback, buf.value)
+                    file_list.append(buf.value)
                 shell32.DragFinish(wp)
+                
+                # Schedule the callback in the MAIN thread using the event loop safely.
+                # This bypasses the OS thread crash entirely.
+                for f in file_list:
+                    self.root.after_idle(self.safe_callback, f)
                 return 0
             
-            # This is now guaranteed to return a native architecture integer and never "None"
             return user32.CallWindowProcW(self.old_wndproc, hwnd, msg, wp, lp)
 
+        def safe_callback(self, filepath):
+            # This runs on the Main Thread (GIL held), where it is safe to talk to Tkinter.
+            self.callback(filepath)
 
 def derive_key(password, salt):
     """Derive a simple key from password and salt using SHA-256."""

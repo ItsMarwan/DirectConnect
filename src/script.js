@@ -15,6 +15,13 @@ const senderFileSize = document.getElementById('sender-file-size');
 const shareUrlInput = document.getElementById('share-url-input');
 const copyUrlBtn = document.getElementById('copy-url-btn');
 
+// Fallback Elements
+const senderFallbackUpload = document.getElementById('sender-fallback-upload');
+const fallbackFilePicker = document.getElementById('fallback-file-picker');
+const fallbackTargetName = document.getElementById('fallback-target-name');
+const fallbackDropZone = document.getElementById('fallback-drop-zone');
+const fallbackDropText = document.getElementById('fallback-drop-text');
+
 const decryptForm = document.getElementById('decrypt-form');
 const passwordInput = document.getElementById('password');
 const decryptError = document.getElementById('decrypt-error');
@@ -36,6 +43,29 @@ let decryptedConfig = null;
 let myPeer = null;
 let activeConnection = null;
 let fileBlob = null; 
+let activePassword = '';
+
+// GLOBAL WEBRTC CONFIG: Added STUN and TURN configurations from the Open Relay Project 
+// to bypass symmetric NAT firewalls, university Wi-Fi, office blockers, and 4G/5G mobile carriers.
+const PEER_CONFIG = {
+    config: {
+        'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun.relay.metered.ca:80' },
+            {
+                urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+                username: 'metered',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:global.relay.metered.ca:80',
+                username: 'metered',
+                credential: 'openrelayproject'
+            }
+        ]
+    }
+};
 
 function showState(element) {
     [stateLanding, stateSender, stateDecrypt, stateDownload, stateProgress, stateError].forEach(el => el.classList.add('hidden'));
@@ -56,23 +86,12 @@ async function deriveKey(password, salt) {
 async function decryptPayload(payload, password) {
     try {
         if (!payload) return null;
-        
-        // 1. Strip any leading/trailing whitespace
-        payload = payload.trim();
-        
-        // 2. Sanitize payload: strip out any trailing slashes, spaces, or query Normalization
-        // characters introduced by instant messaging apps (keep only pure alphanumeric digits)
-        payload = payload.replace(/[^a-zA-Z0-9]/g, '');
-        
+        payload = payload.trim().replace(/[^a-zA-Z0-9]/g, '');
         if (payload.length < 8) return null;
-        
+
         const salt = payload.substring(0, 8);
-        let hexData = payload.substring(8);
+        let hexData = payload.substring(8).replace(/[^a-fA-F0-9]/g, '');
         
-        // 3. Keep purely hexadecimal characters (0-9, a-f, A-F)
-        hexData = hexData.replace(/[^a-fA-F0-9]/g, '');
-        
-        // 4. Ensure an even length (cleanly discard odd trailing character if corrupted)
         if (hexData.length % 2 !== 0) {
             hexData = hexData.substring(0, hexData.length - 1);
         }
@@ -86,7 +105,7 @@ async function decryptPayload(payload, password) {
         for (let i = 0; i < encryptedBytes.length; i++) {
             const indexBytes = new Uint8Array(4);
             const view = new DataView(indexBytes.buffer);
-            view.setUint32(0, i, false); // Big endian
+            view.setUint32(0, i, false);
             
             const block = new Uint8Array(key.length + 4);
             block.set(key);
@@ -101,8 +120,7 @@ async function decryptPayload(payload, password) {
         const jsonStr = new TextDecoder().decode(decryptedBytes);
         return JSON.parse(jsonStr);
     } catch (err) {
-        // Log a warning indicating a failed handshake instead of an uncaught console panic
-        console.warn("Secure tunnel link could not be decrypted. Typically indicates incorrect password or incomplete URL copy-paste.");
+        console.warn("Secure tunnel link could not be decrypted.");
         return null;
     }
 }
@@ -131,7 +149,6 @@ async function encryptPayload(dataStr, password) {
         encryptedBytes[i] = dataBytes[i] ^ keystreamByte;
     }
     
-    // Output encrypted bytes as pure hex
     let hex = '';
     for (let i = 0; i < encryptedBytes.length; i++) {
         hex += encryptedBytes[i].toString(16).padStart(2, '0');
@@ -195,36 +212,86 @@ senderDecryptBtn.addEventListener('click', async () => {
     
     const localConfig = await decryptPayload(encryptedPayload, pwd);
     if (localConfig && localConfig.port && localConfig.token) {
-        senderPrompt.classList.add('hidden');
-        senderActive.classList.remove('hidden');
+        activePassword = pwd;
         
+        // Expose target configurations
         senderFileName.textContent = localConfig.filename;
         senderFileSize.textContent = formatBytes(localConfig.size);
-
+        
+        // Attempt to reach the companion web server
         try {
             const localFileUrl = `http://127.0.0.1:${localConfig.port}/${localConfig.token}`;
             const response = await fetch(localFileUrl);
             if (!response.ok) throw new Error("Local host unresponsive");
             fileBlob = await response.blob();
+            
+            // Proceed immediately
+            senderPrompt.classList.add('hidden');
+            senderActive.classList.remove('hidden');
             initializeWebRTCSender(pwd, localConfig.filename, localConfig.size);
         } catch (e) {
-            console.error(e);
-            alert("Error: Could not retrieve file locally. Keep DirectConnect.exe alive.");
+            console.warn("Local companion fetch blocked by system/ad-blocker. Activating browser manual fallback.", e);
+            
+            // Show file picker fallback container
+            senderPrompt.classList.add('hidden');
+            senderFallbackUpload.classList.remove('hidden');
+            fallbackTargetName.textContent = `Target File Name: "${localConfig.filename}" (${formatBytes(localConfig.size)})`;
+            
+            // Set up event listeners for manual upload
+            setupManualFallback(localConfig.filename, localConfig.size, pwd);
         }
     } else {
         senderDecryptError.classList.remove('hidden');
     }
 });
 
-function initializeWebRTCSender(password, filename, size) {
-    myPeer = new Peer({
-        config: {
-            'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+function setupManualFallback(targetName, targetSize, pwd) {
+    const handleFile = (file) => {
+        if (!file) return;
+        
+        if (file.name !== targetName) {
+            if (!confirm(`Warning: Selected file name ("${file.name}") does not match the file you chose to share ("${targetName}"). Would you like to proceed anyway?`)) {
+                return;
+            }
+        }
+        
+        fileBlob = file;
+        senderFallbackUpload.classList.add('hidden');
+        senderActive.classList.remove('hidden');
+        
+        senderFileName.textContent = file.name;
+        senderFileSize.textContent = formatBytes(file.size);
+        
+        initializeWebRTCSender(pwd, file.name, file.size);
+    };
+
+    fallbackFilePicker.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
         }
     });
+
+    fallbackDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fallbackDropZone.classList.add('border-green-500');
+    });
+
+    fallbackDropZone.addEventListener('dragleave', () => {
+        fallbackDropZone.classList.remove('border-green-500');
+    });
+
+    fallbackDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fallbackDropZone.classList.remove('border-green-500');
+        if (e.dataTransfer.files.length > 0) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+function initializeWebRTCSender(password, filename, size) {
+    // Setup direct PeerJS configuration using global TURN relay pools
+    myPeer = new Peer(PEER_CONFIG);
 
     myPeer.on('open', async (id) => {
         const payloadObject = {
@@ -326,14 +393,7 @@ decryptForm.addEventListener('submit', async (e) => {
 });
 
 function connectToHostPeer(targetPeerId) {
-    myPeer = new Peer({
-        config: {
-            'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        }
-    });
+    myPeer = new Peer(PEER_CONFIG);
 
     myPeer.on('open', () => {
         connStatusEl.textContent = "Handshaking secure tunnel route...";

@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#22c55e">
     <meta property="og:title" content="DirectConnect | by itsmarwan">
     <meta property="og:description" content="Secure, zero-cloud-storage, direct peer-to-peer file sharing pipeline. Host globally, stream straight between clients.">
+    <meta property="og:image" content="favicon.png">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="DirectConnect | by itsmarwan">
@@ -80,6 +81,7 @@
                     <p class="text-xs text-zinc-400">Unlock node credentials to register your peer identifier...</p>
                 </div>
 
+                <!-- Input Password Box -->
                 <div id="sender-prompt" class="space-y-4">
                     <div>
                         <label for="sender-password" class="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-2">Session Password</label>
@@ -92,6 +94,28 @@
                     <p id="sender-decrypt-error" class="hidden text-red-500 text-xs text-center font-mono">Incorrect encryption password.</p>
                 </div>
 
+                <!-- Ad-Blocker Manual Fallback -->
+                <div id="sender-fallback-upload" class="hidden space-y-4">
+                    <div class="bg-red-950/20 border border-red-500/20 p-4 rounded text-center space-y-2">
+                        <p class="text-xs font-mono text-red-400 font-bold uppercase tracking-wider">
+                            <i class="fa-solid fa-shield-halved"></i> Extension Block Detected
+                        </p>
+                        <p class="text-[11px] text-zinc-400 leading-relaxed">
+                            Your browser or ad-blocker blocked the background loopback call to the local Python helper.
+                        </p>
+                        <p class="text-xs text-green-500 font-bold">
+                            Please select or drop the shared file manually below to initialize your pipeline:
+                        </p>
+                    </div>
+                    <div id="fallback-drop-zone" class="border-2 border-dashed border-zinc-800 hover:border-green-500/50 bg-zinc-900/20 rounded p-6 text-center cursor-pointer transition-colors relative">
+                        <input type="file" id="fallback-file-picker" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-zinc-500 mb-2"></i>
+                        <p id="fallback-drop-text" class="text-xs font-mono text-zinc-300">CLICK TO BROWSE OR DRAG FILE HERE</p>
+                        <p id="fallback-target-name" class="text-[10px] text-green-500 mt-1 font-bold tracking-tight"></p>
+                    </div>
+                </div>
+
+                <!-- Sender Connection Status Screen -->
                 <div id="sender-active" class="hidden space-y-4">
                     <div class="bg-zinc-900 border border-zinc-800 rounded p-4 space-y-2 font-mono">
                         <div class="flex justify-between text-xs">
