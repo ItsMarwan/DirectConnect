@@ -1,4 +1,3 @@
-
 const stateLanding = document.getElementById('state-landing');
 const stateSender = document.getElementById('state-sender');
 const stateDecrypt = document.getElementById('state-decrypt');
@@ -57,9 +56,11 @@ async function deriveKey(password, salt) {
 async function decryptPayload(payload, password) {
     try {
         const salt = payload.substring(0, 8);
-        const base64Data = payload.substring(8);
-        const cleanB64 = base64Data.replace(/-/g, '+').replace(/_/g, '/');
-        const encryptedBytes = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+        const hexData = payload.substring(8);
+        
+        // Decode from robust Hex instead of fragile Base64
+        const hexPairs = hexData.match(/.{1,2}/g) || [];
+        const encryptedBytes = new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
         
         const key = await deriveKey(password, salt);
         const decryptedBytes = new Uint8Array(encryptedBytes.length);
@@ -111,9 +112,12 @@ async function encryptPayload(dataStr, password) {
         encryptedBytes[i] = dataBytes[i] ^ keystreamByte;
     }
     
-    const base64Data = btoa(String.fromCharCode.apply(null, encryptedBytes))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    return salt + base64Data;
+    // Output encrypted bytes as pure hex
+    let hex = '';
+    for (let i = 0; i < encryptedBytes.length; i++) {
+        hex += encryptedBytes[i].toString(16).padStart(2, '0');
+    }
+    return salt + hex;
 }
 
 function formatBytes(bytes) {
