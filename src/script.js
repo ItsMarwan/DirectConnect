@@ -55,10 +55,28 @@ async function deriveKey(password, salt) {
 
 async function decryptPayload(payload, password) {
     try {
-        const salt = payload.substring(0, 8);
-        const hexData = payload.substring(8);
+        if (!payload) return null;
         
-        // Decode from robust Hex instead of fragile Base64
+        // 1. Strip any leading/trailing whitespace
+        payload = payload.trim();
+        
+        // 2. Sanitize payload: strip out any trailing slashes, spaces, or query Normalization
+        // characters introduced by instant messaging apps (keep only pure alphanumeric digits)
+        payload = payload.replace(/[^a-zA-Z0-9]/g, '');
+        
+        if (payload.length < 8) return null;
+        
+        const salt = payload.substring(0, 8);
+        let hexData = payload.substring(8);
+        
+        // 3. Keep purely hexadecimal characters (0-9, a-f, A-F)
+        hexData = hexData.replace(/[^a-fA-F0-9]/g, '');
+        
+        // 4. Ensure an even length (cleanly discard odd trailing character if corrupted)
+        if (hexData.length % 2 !== 0) {
+            hexData = hexData.substring(0, hexData.length - 1);
+        }
+        
         const hexPairs = hexData.match(/.{1,2}/g) || [];
         const encryptedBytes = new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
         
@@ -68,7 +86,7 @@ async function decryptPayload(payload, password) {
         for (let i = 0; i < encryptedBytes.length; i++) {
             const indexBytes = new Uint8Array(4);
             const view = new DataView(indexBytes.buffer);
-            view.setUint32(0, i, false);
+            view.setUint32(0, i, false); // Big endian
             
             const block = new Uint8Array(key.length + 4);
             block.set(key);
@@ -83,7 +101,8 @@ async function decryptPayload(payload, password) {
         const jsonStr = new TextDecoder().decode(decryptedBytes);
         return JSON.parse(jsonStr);
     } catch (err) {
-        console.error("Payload decryption error:", err);
+        // Log a warning indicating a failed handshake instead of an uncaught console panic
+        console.warn("Secure tunnel link could not be decrypted. Typically indicates incorrect password or incomplete URL copy-paste.");
         return null;
     }
 }
